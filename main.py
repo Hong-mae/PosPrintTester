@@ -14,7 +14,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QFontDatabase, QIcon
 from PySide6.QtWidgets import QApplication, QMessageBox
 
-from pos_tester import __version__
+from pos_tester import __version__, use_utf8_console
 from pos_tester.ui.main_window import MainWindow, build_stylesheet
 from pos_tester.ui.tokens import FONT_CANDIDATES, TYPE
 
@@ -66,6 +66,7 @@ def _install_excepthook(app: QApplication) -> None:
 
 
 def main() -> int:
+    use_utf8_console()
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_DontShowIconsInMenus, False)
     app = QApplication(sys.argv)
     app.setApplicationName("POSTester")

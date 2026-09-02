@@ -49,6 +49,11 @@ jobs:
   build-windows:
     name: exe 빌드 · 실행 확인 (Windows)
     runs-on: windows-latest
+    # Windows 파이썬은 stdout 인코딩을 콘솔 코드페이지(cp1252)에서 가져와
+    # 한글 print 가 UnicodeEncodeError 를 낸다. UTF-8 모드로 못 박는다.
+    env:
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     steps:
       - uses: actions/checkout@v4
 

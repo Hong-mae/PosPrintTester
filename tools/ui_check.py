@@ -27,6 +27,7 @@ from PySide6.QtGui import QFont  # noqa: E402
 from PySide6.QtWidgets import QApplication, QMessageBox  # noqa: E402
 
 import main as entry  # noqa: E402
+from pos_tester import use_utf8_console  # noqa: E402
 from pos_tester.core.escpos import CutMode  # noqa: E402
 from pos_tester.ui.main_window import MainWindow, build_stylesheet  # noqa: E402
 from pos_tester.ui.tokens import BASE_HEIGHT, BASE_WIDTH, COLORS, TYPE  # noqa: E402
@@ -43,6 +44,7 @@ def check(condition: bool, message: str) -> None:
 
 
 def main() -> int:
+    use_utf8_console()
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     app = QApplication(sys.argv)

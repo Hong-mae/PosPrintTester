@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from PIL import Image, ImageDraw  # noqa: E402
 
+from pos_tester import use_utf8_console  # noqa: E402
 from pos_tester.ui.tokens import COLORS  # noqa: E402
 
 #: ICO 안에 담을 크기들. 작업 표시줄·바탕화면·탐색기가 각각 다른 크기를 쓴다.
@@ -53,6 +54,7 @@ def draw_icon() -> Image.Image:
 
 
 def main() -> int:
+    use_utf8_console()
     output = Path(__file__).with_name("icon.ico")
     icon = draw_icon()
     icon.save(output, format="ICO", sizes=[(s, s) for s in SIZES])
