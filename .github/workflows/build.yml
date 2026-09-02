@@ -78,7 +78,7 @@ jobs:
       - name: exe 빌드
         run: python -m PyInstaller --clean --noconfirm build/POSTester.spec
 
-      - name: 실행 확인 (창이 뜨는지 + 첫 실행 시간 측정)
+      - name: 실행 확인 (빌드된 exe 가 죽지 않고 도는지)
         shell: pwsh
         run: |
           $exe = "dist\POSTester.exe"
@@ -88,46 +88,28 @@ jobs:
           $mb    = [math]::Round($bytes / 1MB, 1)
           Write-Host "크기: $bytes 바이트 ($mb MB)"
 
-          # onefile 은 첫 실행에 임시 폴더로 압축을 풀기 때문에 두 번째보다 느리다.
-          # 현장에서 체감하는 값이므로 '창이 뜰 때까지' 를 잰다.
-          function Measure-Launch([string]$label) {
-              $sw = [System.Diagnostics.Stopwatch]::StartNew()
-              $proc = Start-Process -FilePath $exe -PassThru
-              $title = ""
-              while ($sw.Elapsed.TotalSeconds -lt 90) {
-                  Start-Sleep -Milliseconds 200
-                  $proc.Refresh()
-                  if ($proc.HasExited) {
-                      throw "$label - 창이 뜨기 전에 종료되었습니다 (종료 코드 $($proc.ExitCode))"
-                  }
-                  if ($proc.MainWindowTitle -ne "") { $title = $proc.MainWindowTitle; break }
-              }
-              $sw.Stop()
-              if ($title -eq "") { $proc | Stop-Process -Force; throw "$label - 90초 안에 창이 뜨지 않았습니다" }
-              $seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
-              Write-Host "$label : ${seconds}초 - 창 제목 '$title'"
-              Start-Sleep -Seconds 2
-              $proc.Refresh()
-              if ($proc.HasExited) { throw "$label - 창이 뜬 뒤 곧바로 종료되었습니다" }
-              $proc | Stop-Process -Force
-              return @{ Seconds = $seconds; Title = $title }
+          # GitHub Actions 러너에는 대화형 데스크톱이 없어 MainWindowTitle 이
+          # 항상 비어 있다. 그래서 '창이 떴는지' 대신 '띄워 두고 죽지 않는지' 를 본다.
+          # hidden import 누락, theme.qss 누락, 잘못된 excludes(예: shiboken6)처럼
+          # '빌드는 되는데 실행 즉시 죽는' 문제는 전부 여기서 잡힌다.
+          # 창이 실제로 그려지는지는 리눅스 잡의 tools/ui_check.py 가 확인한다.
+          $proc = Start-Process -FilePath $exe -PassThru
+          Start-Sleep -Seconds 20
+          $proc.Refresh()
+          if ($proc.HasExited) {
+              throw "실행 직후 종료되었습니다 (종료 코드 $($proc.ExitCode)). " +
+                    "hidden import 나 datas 가 빠졌을 수 있습니다."
           }
+          Write-Host "20초 이상 정상 실행 유지 - exe 정상"
+          $proc | Stop-Process -Force
 
-          $first  = Measure-Launch "첫 실행"
-          $second = Measure-Launch "두 번째 실행"
-
-          if ($first.Title -notlike "*POSTester*") { throw "창 제목이 예상과 다릅니다: $($first.Title)" }
-
-          # README 에 적을 실측값을 요약에 남긴다.
           @"
           ## POSTester.exe 빌드 결과
 
           | 항목 | 값 |
           |---|---|
           | 크기 | $bytes 바이트 ($mb MB) |
-          | 첫 실행 (창이 뜰 때까지) | $($first.Seconds)초 |
-          | 두 번째 실행 | $($second.Seconds)초 |
-          | 창 제목 | $($first.Title) |
+          | 실행 | 20초 이상 정상 유지 |
           | 러너 | windows-latest |
           "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
 

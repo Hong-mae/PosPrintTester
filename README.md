@@ -218,14 +218,15 @@ python -m PyInstaller --clean --noconfirm build\POSTester.spec
 <!-- CI-MEASURED:BEGIN -->
 | 항목 | 값 | 측정 환경 |
 |---|---|---|
-| 크기 | **57 MB** (58,875,208 바이트) | Linux x86_64 · PyInstaller 6.22 · PySide6-Essentials 6.11 |
-| 첫 실행 (창이 뜰 때까지) | **1.6초** | 같음 |
+| **크기 (Windows exe)** | **38.5 MB** (40,406,314 바이트) | GitHub Actions `windows-latest` · PyInstaller 6.x · PySide6-Essentials |
+| 첫 실행 (창이 뜰 때까지) | **1.6초** | Linux x86_64, 동일한 `.spec` 으로 빌드한 onefile |
 | 두 번째 실행 | **1.6초** | 같음 |
 
-위 값은 **동일한 `.spec` 으로 리눅스에서 실제 빌드·실행해 측정한 값**입니다.
-Windows exe 의 실측값은 GitHub Actions `build-windows` 잡이 돌면
-Actions 요약 페이지에 나오며, 이 표를 그 값으로 바꾸면 됩니다.
-Windows 는 pywin32 가 추가로 들어가므로 크기가 조금 더 큽니다 (60 MB 안팎 예상).
+크기는 Windows exe 실측값입니다.
+실행 시간은 **리눅스에서 같은 `.spec` 으로 빌드한 onefile 실행 파일** 기준입니다 —
+GitHub Actions Windows 러너에는 대화형 데스크톱이 없어 "창이 뜬 시점" 을 잴 수 없기 때문입니다.
+(대신 CI 는 exe 를 띄워 두고 20초 이상 죽지 않는지를 확인합니다.)
+정확한 Windows 첫 실행 시간이 필요하면 실제 POS 단말기에서 재 보세요.
 <!-- CI-MEASURED:END -->
 
 실제 POS 단말기(Intel N95, DDR4 4GB)는 측정 환경보다 느리므로
