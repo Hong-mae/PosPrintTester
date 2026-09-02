@@ -1,0 +1,387 @@
+/* ==========================================================================
+   POSTester 테마
+   색상·간격 값은 모두 ui/tokens.py 에 있고, 여기서는 {{이름}} 으로만 참조한다.
+   이 파일을 직접 열어 색을 바꾸지 말고 tokens.py 를 고칠 것.
+   ========================================================================== */
+
+/* --- 기본 ---------------------------------------------------------------- */
+/* 배경은 창과 카드에만 준다. 범용 QWidget 에 배경색을 주면 카드 안의
+   레이아웃용 컨테이너까지 어두운 상자로 칠해져 층위가 무너진다. */
+QWidget {
+    color: {{text}};
+    font-family: {{font-stack}};
+    font-size: {{font-body}}px;
+}
+
+QMainWindow, QDialog {
+    background-color: {{bg-base}};
+}
+
+QMainWindow > QWidget {
+    background-color: {{bg-base}};
+}
+
+QToolTip {
+    background-color: {{bg-raised}};
+    color: {{text}};
+    border: 1px solid {{border-hi}};
+    border-radius: 6px;
+    padding: 6px 10px;
+}
+
+/* --- 타이포 3단계 --------------------------------------------------------- */
+QLabel[role="title"] {
+    font-size: {{font-title}}px;
+    font-weight: 600;
+}
+
+QLabel[role="section"] {
+    font-size: {{font-section}}px;
+    font-weight: 600;
+    color: {{text-dim}};
+    letter-spacing: 1px;
+    padding: 0;
+}
+
+QLabel[role="caption"] {
+    font-size: {{font-caption}}px;
+    color: {{text-mute}};
+}
+
+QLabel[role="value"] {
+    font-size: {{font-body}}px;
+    color: {{text}};
+}
+
+QLabel:disabled {
+    color: {{text-disabled}};
+}
+
+/* --- 카드: 배경색만 바꾸지 않고 보더로 층위를 만든다 ------------------------ */
+QFrame#Card {
+    background-color: {{bg-card}};
+    border: 1px solid {{border}};
+    border-radius: 10px;
+}
+
+
+/* 카드 상단 얇은 하이라이트로 살짝 떠 있는 느낌을 준다. */
+QFrame#CardTopEdge {
+    background-color: {{border-hi}};
+    border: none;
+    border-radius: 0px;
+    max-height: 1px;
+}
+
+QFrame#Separator {
+    background-color: {{border}};
+    border: none;
+    max-height: 1px;
+}
+
+/* --- 상단 연결 상태 바 ---------------------------------------------------- */
+QFrame#StatusHeader {
+    background-color: {{bg-card}};
+    border: 1px solid {{border}};
+    border-radius: 10px;
+}
+
+
+QLabel#StatusTitle {
+    font-size: 22px;
+    font-weight: 700;
+}
+
+QLabel#StatusTitle[state="connected"] { color: {{ok}}; }
+QLabel#StatusTitle[state="disconnected"] { color: {{text-mute}}; }
+QLabel#StatusTitle[state="busy"] { color: {{accent}}; }
+QLabel#StatusTitle[state="error"] { color: {{error}}; }
+
+QLabel#StatusTarget {
+    font-size: {{font-body}}px;
+    color: {{text-dim}};
+}
+
+QLabel#StatusDot {
+    min-width: 16px;
+    max-width: 16px;
+    min-height: 16px;
+    max-height: 16px;
+    border-radius: 8px;
+    background-color: {{idle}};
+}
+
+QLabel#StatusDot[state="connected"] { background-color: {{ok}}; }
+QLabel#StatusDot[state="disconnected"] { background-color: {{idle}}; }
+QLabel#StatusDot[state="busy"] { background-color: {{accent}}; }
+QLabel#StatusDot[state="error"] { background-color: {{error}}; }
+
+/* --- 버튼: 기본 / 호버 / 눌림 / 비활성 4상태를 모두 정의한다 ---------------- */
+QPushButton {
+    background-color: {{bg-raised}};
+    color: {{text}};
+    border: 1px solid {{border-hi}};
+    border-radius: {{touch-radius}}px;
+    padding: 10px 14px;
+    font-size: {{font-button}}px;
+    font-weight: 500;
+    min-height: {{qss-primary-h}}px;   /* 내용 영역 기준 — 실제 높이는 padding 포함 56px */
+    text-align: center;
+}
+
+QPushButton:hover {
+    background-color: #2B3037;
+    border-color: #464D57;
+}
+
+QPushButton:pressed {
+    background-color: #1B1F24;
+    border-color: {{border-hi}};
+    padding-top: 11px;   /* 눌리면 1px 내려앉는 느낌 */
+    padding-bottom: 9px;
+}
+
+QPushButton:disabled {
+    background-color: #1A1D21;
+    color: {{text-disabled}};
+    border-color: #24282E;
+}
+
+QPushButton:focus {
+    border: 2px solid {{accent}};
+    padding: 9px 13px;
+}
+
+/* 주요 액션 — 화면당 하나 정도만 */
+QPushButton[variant="primary"] {
+    background-color: {{accent}};
+    color: {{accent-fg}};
+    border: 1px solid {{accent}};
+    font-weight: 600;
+}
+QPushButton[variant="primary"]:hover {
+    background-color: {{accent-hover}};
+    border-color: {{accent-hover}};
+}
+QPushButton[variant="primary"]:pressed {
+    background-color: {{accent-press}};
+    border-color: {{accent-press}};
+}
+QPushButton[variant="primary"]:disabled {
+    background-color: #253330;
+    color: {{text-disabled}};
+    border-color: #2B3A37;
+}
+
+/* 위험 동작 — 채워진 색 대신 앰버 보더로 구분해 오조작을 막는다 */
+QPushButton[variant="danger"] {
+    background-color: transparent;
+    color: {{warn}};
+    border: 2px solid {{warn}};
+    font-weight: 600;
+}
+QPushButton[variant="danger"]:hover {
+    background-color: {{warn-soft}};
+}
+QPushButton[variant="danger"]:pressed {
+    background-color: #241E15;
+}
+QPushButton[variant="danger"]:disabled {
+    color: {{text-disabled}};
+    border-color: #3A3529;
+    background-color: transparent;
+}
+
+/* 보조 — 로그 지우기/저장처럼 덜 중요한 것 */
+QPushButton[variant="ghost"] {
+    background-color: transparent;
+    color: {{text-dim}};
+    border: 1px solid {{border}};
+    min-height: {{qss-secondary-h}}px;
+    font-size: {{font-body}}px;
+    font-weight: 400;
+    padding: 6px 12px;
+}
+QPushButton[variant="ghost"]:hover {
+    background-color: {{bg-raised}};
+    color: {{text}};
+    border-color: {{border-hi}};
+}
+QPushButton[variant="ghost"]:pressed {
+    background-color: {{bg-sunken}};
+}
+QPushButton[variant="ghost"]:disabled {
+    color: {{text-disabled}};
+    border-color: #24282E;
+}
+
+/* 링크처럼 보이는 인라인 버튼 ("안 열려요?") */
+QPushButton[variant="link"] {
+    background-color: transparent;
+    border: none;
+    color: {{accent}};
+    font-size: {{font-caption}}px;
+    font-weight: 500;
+    min-height: 0px;
+    padding: 4px 6px;
+    text-decoration: underline;
+}
+QPushButton[variant="link"]:hover { color: {{accent-hover}}; }
+QPushButton[variant="link"]:disabled { color: {{text-disabled}}; }
+
+/* 테스트 결과 즉시 피드백 — 누른 버튼 테두리가 잠깐 바뀐다 */
+QPushButton[result="ok"] {
+    border: 2px solid {{ok}};
+    background-color: {{ok-soft}};
+    color: {{ok}};
+}
+QPushButton[result="fail"] {
+    border: 2px solid {{error}};
+    background-color: {{error-soft}};
+    color: {{error}};
+}
+
+/* --- 콤보박스: 터치로 고를 수 있게 항목 높이를 키운다 ---------------------- */
+QComboBox {
+    background-color: {{bg-sunken}};
+    border: 1px solid {{border-hi}};
+    border-radius: {{touch-radius}}px;
+    padding: 8px 12px;
+    min-height: {{qss-combo-h}}px;
+    color: {{text}};
+}
+QComboBox:hover { border-color: #4A525C; }
+QComboBox:focus { border: 2px solid {{accent}}; padding: 7px 11px; }
+QComboBox:disabled {
+    background-color: #15181B;
+    color: {{text-disabled}};
+    border-color: #24282E;
+}
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 34px;
+    border: none;
+}
+QComboBox::down-arrow {
+    image: none;
+    width: 0px;
+    height: 0px;
+    border-left: 6px solid transparent;
+    border-right: 6px solid transparent;
+    border-top: 7px solid {{text-dim}};
+    margin-right: 12px;
+}
+QComboBox::down-arrow:disabled { border-top-color: {{text-disabled}}; }
+
+QComboBox QAbstractItemView {
+    background-color: {{bg-raised}};
+    border: 1px solid {{border-hi}};
+    border-radius: {{touch-radius}}px;
+    color: {{text}};
+    padding: 4px;
+    outline: none;
+    selection-background-color: {{accent-soft}};
+    selection-color: {{text}};
+}
+QComboBox QAbstractItemView::item {
+    min-height: {{touch-combo-item-h}}px;
+    padding: 0px 10px;
+    border-radius: 6px;
+}
+QComboBox QAbstractItemView::item:selected {
+    background-color: {{accent-soft}};
+    color: {{accent-hover}};
+}
+
+/* --- 입력 --------------------------------------------------------------- */
+QLineEdit {
+    background-color: {{bg-sunken}};
+    border: 1px solid {{border-hi}};
+    border-radius: {{touch-radius}}px;
+    padding: 8px 12px;
+    min-height: {{qss-input-h}}px;
+    color: {{text}};
+    selection-background-color: {{accent}};
+    selection-color: {{accent-fg}};
+}
+QLineEdit:focus { border: 2px solid {{accent}}; padding: 7px 11px; }
+QLineEdit:disabled { background-color: #15181B; color: {{text-disabled}}; }
+
+/* --- 로그 --------------------------------------------------------------- */
+QPlainTextEdit#LogView {
+    background-color: {{bg-sunken}};
+    border: 1px solid {{border}};
+    border-radius: {{touch-radius}}px;
+    color: {{text-dim}};
+    font-family: "Consolas", "D2Coding", "Malgun Gothic", monospace;
+    font-size: 13px;
+    padding: 8px;
+    selection-background-color: {{accent-soft}};
+}
+
+/* --- 상태 램프 (프린터/커버/용지/절단기/금전함) ---------------------------- */
+/* 카드 안에 상자가 또 생기지 않도록 셀 배경은 투명하게 두고, 칸은 선으로만 나눈다. */
+QFrame#LampDivider { background-color: {{border-hi}}; border: none; }
+
+QLabel[lamp="ok"]    { color: {{ok}}; }
+QLabel[lamp="warn"]  { color: {{warn}}; }
+QLabel[lamp="error"] { color: {{error}}; }
+QLabel[lamp="idle"]  { color: {{text-mute}}; }
+
+/* --- 진행 표시 ---------------------------------------------------------- */
+QProgressBar {
+    background-color: {{bg-sunken}};
+    border: 1px solid {{border}};
+    border-radius: 6px;
+    height: 8px;
+    text-align: center;
+    color: transparent;
+}
+QProgressBar::chunk {
+    background-color: {{accent}};
+    border-radius: 5px;
+}
+
+/* --- 스크롤바 ----------------------------------------------------------- */
+QScrollBar:vertical {
+    background: transparent;
+    width: 12px;
+    margin: 2px;
+}
+QScrollBar::handle:vertical {
+    background: #333941;
+    border-radius: 5px;
+    min-height: 40px;
+}
+QScrollBar::handle:vertical:hover { background: #414952; }
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0px; }
+QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical { background: none; }
+
+QScrollBar:horizontal {
+    background: transparent;
+    height: 12px;
+    margin: 2px;
+}
+QScrollBar::handle:horizontal {
+    background: #333941;
+    border-radius: 5px;
+    min-width: 40px;
+}
+QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal { width: 0px; }
+QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal { background: none; }
+
+/* --- 체크리스트 다이얼로그 ------------------------------------------------ */
+QFrame#ChecklistItem {
+    background-color: {{bg-card}};
+    border: 1px solid {{border}};
+    border-left: 3px solid {{warn}};
+    border-radius: 8px;
+}
+
+QLabel#ChecklistNumber {
+    color: {{warn}};
+    font-size: {{font-title}}px;
+    font-weight: 700;
+    min-width: 24px;
+}

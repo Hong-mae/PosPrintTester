@@ -1,0 +1,4 @@
+# 빌드에 필요한 패키지 (실행용 + 빌드 도구)
+-r requirements.txt
+pyinstaller>=6.3
+pillow>=10.0                    # 아이콘 생성 (build/make_icon.py)

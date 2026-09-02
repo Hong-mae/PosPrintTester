@@ -1,0 +1,134 @@
+name: build
+
+# 리눅스에서는 단위 테스트와 UI 플로우 검증을,
+# 윈도우에서는 실제 exe 빌드와 실행 확인을 한다.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: 테스트 (Linux)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Qt 실행에 필요한 라이브러리
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq \
+            xvfb libegl1 libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 \
+            libxcb-keysyms1 libxcb-shape0 libdbus-1-3 libxcb-xinerama0 fonts-nanum
+
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-dev.txt
+
+      - name: 단위 테스트 (core)
+        run: python -m pytest tests/ -v
+
+      - name: UI 전체 플로우 검증 (Mock)
+        run: xvfb-run -a -s "-screen 0 1280x1024x24" python tools/ui_check.py
+
+      - name: 스크린샷 업로드
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: build/screenshots/
+          if-no-files-found: warn
+
+  build-windows:
+    name: exe 빌드 · 실행 확인 (Windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: 의존성 설치
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-build.txt
+
+      - name: 단위 테스트 (Windows)
+        run: |
+          python -m pip install pytest
+          python -m pytest tests/ -q
+
+      - name: 아이콘 생성
+        run: python build/make_icon.py
+
+      - name: exe 빌드
+        run: python -m PyInstaller --clean --noconfirm build/POSTester.spec
+
+      - name: 실행 확인 (창이 뜨는지 + 첫 실행 시간 측정)
+        shell: pwsh
+        run: |
+          $exe = "dist\POSTester.exe"
+          if (-not (Test-Path $exe)) { throw "빌드 산출물이 없습니다: $exe" }
+
+          $bytes = (Get-Item $exe).Length
+          $mb    = [math]::Round($bytes / 1MB, 1)
+          Write-Host "크기: $bytes 바이트 ($mb MB)"
+
+          # onefile 은 첫 실행에 임시 폴더로 압축을 풀기 때문에 두 번째보다 느리다.
+          # 현장에서 체감하는 값이므로 '창이 뜰 때까지' 를 잰다.
+          function Measure-Launch([string]$label) {
+              $sw = [System.Diagnostics.Stopwatch]::StartNew()
+              $proc = Start-Process -FilePath $exe -PassThru
+              $title = ""
+              while ($sw.Elapsed.TotalSeconds -lt 90) {
+                  Start-Sleep -Milliseconds 200
+                  $proc.Refresh()
+                  if ($proc.HasExited) {
+                      throw "$label - 창이 뜨기 전에 종료되었습니다 (종료 코드 $($proc.ExitCode))"
+                  }
+                  if ($proc.MainWindowTitle -ne "") { $title = $proc.MainWindowTitle; break }
+              }
+              $sw.Stop()
+              if ($title -eq "") { $proc | Stop-Process -Force; throw "$label - 90초 안에 창이 뜨지 않았습니다" }
+              $seconds = [math]::Round($sw.Elapsed.TotalSeconds, 1)
+              Write-Host "$label : ${seconds}초 - 창 제목 '$title'"
+              Start-Sleep -Seconds 2
+              $proc.Refresh()
+              if ($proc.HasExited) { throw "$label - 창이 뜬 뒤 곧바로 종료되었습니다" }
+              $proc | Stop-Process -Force
+              return @{ Seconds = $seconds; Title = $title }
+          }
+
+          $first  = Measure-Launch "첫 실행"
+          $second = Measure-Launch "두 번째 실행"
+
+          if ($first.Title -notlike "*POSTester*") { throw "창 제목이 예상과 다릅니다: $($first.Title)" }
+
+          # README 에 적을 실측값을 요약에 남긴다.
+          @"
+          ## POSTester.exe 빌드 결과
+
+          | 항목 | 값 |
+          |---|---|
+          | 크기 | $bytes 바이트 ($mb MB) |
+          | 첫 실행 (창이 뜰 때까지) | $($first.Seconds)초 |
+          | 두 번째 실행 | $($second.Seconds)초 |
+          | 창 제목 | $($first.Title) |
+          | 러너 | windows-latest |
+          "@ | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Encoding utf8 -Append
+
+      - name: exe 업로드
+        uses: actions/upload-artifact@v4
+        with:
+          name: POSTester-exe
+          path: dist/POSTester.exe
+          if-no-files-found: error

@@ -1,0 +1,3 @@
+# 개발·검증용
+-r requirements-build.txt
+pytest>=8.0

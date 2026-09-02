@@ -1,0 +1,4 @@
+# 실행에 필요한 패키지
+PySide6-Essentials>=6.6,<7      # Qt UI (전체 PySide6 대신 필요한 모듈만 — exe 가 작아진다)
+pyserial>=3.5                   # 시리얼(COM) 통신
+pywin32>=306 ; sys_platform == "win32"   # 윈도우 스풀러 RAW 인쇄

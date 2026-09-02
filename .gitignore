@@ -1,0 +1,23 @@
+# 파이썬
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# 빌드 산출물
+# icon.ico 는 build/make_icon.py 가 빌드 때마다 만들어 낸다.
+# 코드로 그리므로 바이너리를 저장소에 두지 않는다.
+build/icon.ico
+build/screenshots/
+build/icon_preview.png
+dist/
+*.spec.bak
+# PyInstaller 작업 폴더 (build/ 안의 소스는 추적하므로 하위 폴더만 제외)
+build/POSTester/
+
+# 편집기
+.vscode/
+.idea/
+*.swp
