@@ -307,6 +307,11 @@ class MockState:
     drawer_open: bool = False
     #: 금전함이 실제로 연결되어 있는지. False 면 킥해도 열리지 않는다.
     drawer_connected: bool = True
+    #: 열림 감지 스위치(3번 핀)가 물려 있는지.
+    #: False 면 서랍이 열려도 핀3 는 계속 HIGH 다 - 실제 현장에서 가장 흔한 경우.
+    drawer_sensor_wired: bool = True
+    #: 감지 스위치 극성이 반대(NC)인 금전함. 열림이 HIGH 로 나온다.
+    drawer_sensor_inverted: bool = False
     #: 킥 후 금전함이 열린 것으로 보이는 시간(초).
     drawer_open_seconds: float = 2.0
 
@@ -447,13 +452,23 @@ class MockTransport(Transport):
             self.state.drawer_open = False
         return self.state.drawer_open
 
+    def _pin3_high(self) -> bool:
+        """금전함 커넥터 3번 핀 레벨.
+
+        센서선이 없으면 풀업되어 서랍 상태와 무관하게 계속 HIGH 다.
+        """
+        if not self.state.drawer_sensor_wired:
+            return True
+        is_open = self._drawer_is_open()
+        return is_open if self.state.drawer_sensor_inverted else not is_open
+
     # -- 상태 바이트 생성 -------------------------------------------------
     def _status_byte(self, kind: escpos.StatusKind) -> int:
         v = 0b0001_0010  # bit1, bit4 고정
         s = self.state
         if kind is escpos.StatusKind.PRINTER:
-            if not self._drawer_is_open():
-                v |= 0x04  # 핀3 HIGH = 닫힘/미연결
+            if self._pin3_high():
+                v |= 0x04
             if not s.online or s.cover_open or s.paper_end:
                 v |= 0x08
             if s.cover_open:

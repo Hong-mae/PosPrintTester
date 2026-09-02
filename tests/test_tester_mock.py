@@ -6,8 +6,9 @@ import pytest
 
 from pos_tester.core import escpos as e
 from pos_tester.core.errors import NotConnected, WriteOnlyTransport
-from pos_tester.core.tester import DRAWER_CHECKLIST, PrinterTester
+from pos_tester.core.tester import DRAWER_CHECKLIST, DRAWER_SENSOR_NOTES, PrinterTester
 from pos_tester.core.transport import (
+    MockState,
     MockTransport,
     Transport,
     WinSpoolerTransport,
@@ -163,33 +164,105 @@ def test_amount_rows_fit_the_paper_width(tester: PrinterTester) -> None:
 def test_drawer_kick_opens_drawer(
     tester: PrinterTester, mock: MockTransport, pin: e.DrawerPin
 ) -> None:
-    result = tester.drawer_test(pin, verify_delay=0.0)
+    result = tester.drawer_test(pin, verify_timeout=0.3)
     assert result.ok
     assert mock.kicks == [(pin, False)]
     assert "열림" in result.detail
 
 
 def test_realtime_kick_uses_dle_dc4(tester: PrinterTester, mock: MockTransport) -> None:
-    result = tester.drawer_test(e.DrawerPin.PIN_2, realtime=True, verify_delay=0.0)
+    result = tester.drawer_test(e.DrawerPin.PIN_2, realtime=True, verify_timeout=0.3)
     assert result.ok
     assert mock.kicks == [(e.DrawerPin.PIN_2, True)]
     assert b"\x10\x14\x01\x00" in bytes(mock.received)
 
 
-def test_drawer_not_connected_reports_checklist(tester: PrinterTester, mock: MockTransport) -> None:
-    mock.state.drawer_connected = False
-    result = tester.drawer_test(e.DrawerPin.PIN_2, verify_delay=0.0)
-    assert not result.ok
-    assert "핀3" in result.detail
-    assert result.hints == list(DRAWER_CHECKLIST)
-    # 전압 안내가 체크리스트에 반드시 들어 있어야 한다.
+def test_no_sensor_is_a_warning_not_a_failure(tester: PrinterTester, mock: MockTransport) -> None:
+    """열림 감지 스위치가 없는 금전함은 아주 흔하다.
+
+    서랍은 멀쩡히 열리므로 실패로 판정하면 안 된다. 실패로 몰면 기사가
+    정상 장비를 고장으로 오해하고 엉뚱한 곳을 뜯게 된다.
+    """
+    mock.state.drawer_sensor_wired = False
+    result = tester.drawer_test(e.DrawerPin.PIN_2, verify_timeout=0.3)
+    assert result.ok  # 실패가 아니다
+    assert result.warning  # 다만 눈으로 확인해야 한다
+    assert "감지" in result.detail
+    # 안내가 '열렸다면' 과 '안 열렸다면' 두 갈래를 모두 담고 있어야 한다.
+    assert result.hints[: len(DRAWER_SENSOR_NOTES)] == list(DRAWER_SENSOR_NOTES)
+    assert all(item in result.hints for item in DRAWER_CHECKLIST)
     assert any("24V" in hint for hint in result.hints)
+
+
+def test_inverted_sensor_polarity_is_detected(tester: PrinterTester, mock: MockTransport) -> None:
+    """NC 스위치를 쓰는 금전함은 열림이 HIGH 로 나온다.
+
+    ESC/POS 규격은 핀3 의 레벨만 정의하고 어느 쪽이 열림인지는 정하지 않으므로
+    레벨을 고정 해석하면 안 되고 킥 전후 변화를 봐야 한다.
+    """
+    mock.state.drawer_sensor_inverted = True
+    result = tester.drawer_test(e.DrawerPin.PIN_2, verify_timeout=0.3)
+    assert result.ok
+    assert not result.warning
+    assert "극성" in result.detail
+
+
+def test_drawer_that_does_not_open_is_reported_as_unverified(
+    tester: PrinterTester, mock: MockTransport
+) -> None:
+    """서랍이 안 열린 경우와 센서가 없는 경우는 핀3 만으로 구분할 수 없다.
+
+    그래서 단정하지 않고 눈으로 확인하도록 안내한다.
+    """
+    mock.state.drawer_connected = False
+    result = tester.drawer_test(e.DrawerPin.PIN_2, verify_timeout=0.3)
+    assert result.warning
+    assert "눈으로 확인" in result.detail
+    assert any("안 열려요" in hint for hint in result.hints)
+
+
+def test_already_open_drawer_is_distinguished_from_missing_sensor(mock: MockTransport) -> None:
+    """센서가 동작하는 걸 한 번 본 뒤에는 '이미 열려 있음' 을 구분할 수 있다."""
+    mock.state.drawer_open_seconds = 60.0  # 첫 킥 뒤 계속 열린 채로 둔다
+    tester = PrinterTester(mock)
+
+    first = tester.drawer_test(e.DrawerPin.PIN_2, verify_timeout=0.3)
+    assert first.ok and not first.warning
+
+    second = tester.drawer_test(e.DrawerPin.PIN_5, verify_timeout=0.3)
+    assert second.ok
+    assert second.warning
+    assert "이미 열려" in second.detail
+
+
+def test_write_only_transport_kick_is_a_warning() -> None:
+    """단방향 연결에서는 열렸는지 알 수 없으므로 경고로 둔다."""
+
+    class WriteOnlyMock(MockTransport):
+        supports_read = False
+
+    transport = WriteOnlyMock()
+    transport.open()
+    result = PrinterTester(transport).drawer_test(e.DrawerPin.PIN_2)
+    assert result.ok
+    assert result.warning
+    assert "단방향" in result.detail
 
 
 def test_drawer_state_returns_to_closed(mock: MockTransport, tester: PrinterTester) -> None:
     mock.state.drawer_open_seconds = 0.0
-    tester.drawer_test(e.DrawerPin.PIN_2, verify_delay=0.0)
+    tester.drawer_test(e.DrawerPin.PIN_2, verify_timeout=0.3)
     assert not mock.state.drawer_open
+
+
+def test_mock_pin3_stays_high_without_sensor() -> None:
+    """센서선이 없으면 서랍이 열려도 핀3 는 계속 HIGH 다."""
+    transport = MockTransport(state=MockState(drawer_sensor_wired=False))
+    transport.open()
+    transport.write(e.drawer_kick(e.DrawerPin.PIN_2))
+    assert transport.state.drawer_open  # 서랍은 실제로 열렸다
+    report = transport.query_status(e.StatusKind.PRINTER)
+    assert e.drawer_pin3_high(report.raw)  # 그런데 감지는 안 된다
 
 
 # --------------------------------------------------------------------------

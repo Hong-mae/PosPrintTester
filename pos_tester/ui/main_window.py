@@ -235,7 +235,7 @@ class MainWindow(QMainWindow):
             self.status_panel.clear()
 
     def _on_job_done(self, key: str, outcome: JobOutcome) -> None:
-        self.action_panel.flash_result(key, outcome.ok)
+        self.action_panel.flash_result(key, outcome.ok, outcome.warning)
 
         if key == "connect" and not outcome.ok:
             self.header.set_error(outcome.detail)
@@ -244,7 +244,9 @@ class MainWindow(QMainWindow):
         if outcome.payload is not None:
             self._update_status_lamps(outcome.payload)
         if key.startswith("drawer") and not outcome.ok:
-            # 금전함이 안 열렸으면 체크리스트를 바로 띄운다.
+            # 명령 자체가 실패했을 때만 체크리스트를 띄운다.
+            # '열림 감지 안 됨' 은 센서 없는 금전함에서 정상적으로 나오는 상태라
+            # 팝업 없이 노란색 표시와 로그로만 알린다.
             self.show_drawer_help(outcome.detail)
 
     def _handle_scan_result(self, outcome: JobOutcome) -> None:

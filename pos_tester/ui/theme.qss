@@ -235,6 +235,11 @@ QPushButton[result="ok"] {
     background-color: {{ok-soft}};
     color: {{ok}};
 }
+QPushButton[result="warn"] {
+    border: 2px solid {{warn}};
+    background-color: {{warn-soft}};
+    color: {{warn}};
+}
 QPushButton[result="fail"] {
     border: 2px solid {{error}};
     background-color: {{error-soft}};

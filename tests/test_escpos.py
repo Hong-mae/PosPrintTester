@@ -145,9 +145,14 @@ def _flag(report: e.StatusReport, label: str) -> e.StatusFlag:
 def test_printer_status_all_normal() -> None:
     report = e.decode_status(e.StatusKind.PRINTER, 0x16)  # bit2 셋 = 금전함 닫힘
     assert report.ok
-    assert _flag(report, "금전함").detail == "닫힘 또는 미연결"
+    assert _flag(report, "금전함").detail == "닫힘 (또는 센서 없음)"
     assert _flag(report, "프린터").detail == "온라인"
     assert _flag(report, "커버").detail == "닫힘"
+
+
+def test_pin3_helper_reads_bit2() -> None:
+    assert e.drawer_pin3_high(0x16)      # bit2 셋
+    assert not e.drawer_pin3_high(0x12)  # bit2 클리어
 
 
 def test_printer_status_drawer_open_when_bit2_clear() -> None:

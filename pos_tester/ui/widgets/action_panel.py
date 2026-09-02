@@ -172,12 +172,18 @@ class ActionPanel(Card):
             "" if enabled else "USB(단방향) 연결에서는 프린터 상태를 읽을 수 없습니다."
         )
 
-    def flash_result(self, key: str, ok: bool) -> None:
-        """결과를 버튼 테두리 색으로 잠깐 보여 준다."""
+    def flash_result(self, key: str, ok: bool, warning: bool = False) -> None:
+        """결과를 버튼 테두리 색으로 잠깐 보여 준다.
+
+        성공(초록) / 확인 필요(노랑) / 실패(빨강) 세 가지다.
+        '확인 필요' 는 명령은 나갔지만 결과를 프로그램이 확인할 수 없는 경우로,
+        실패로 몰면 멀쩡한 장비를 고장으로 오해하게 되므로 따로 구분한다.
+        """
         button = self.buttons_by_key.get(key)
         if button is None:
             return
-        set_prop(button, "result", "ok" if ok else "fail")
+        state = "fail" if not ok else "warn" if warning else "ok"
+        set_prop(button, "result", state)
 
         timer = self._flash_timers.get(key)
         if timer is None:

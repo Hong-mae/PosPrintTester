@@ -41,6 +41,8 @@ class JobOutcome:
     key: str
     label: str
     ok: bool
+    #: 실패는 아니지만 사용자가 눈으로 확인해야 하는 상태. UI 가 노란색으로 표시한다.
+    warning: bool = False
     detail: str = ""
     hints: list[str] = field(default_factory=list)
     payload: Any = None
@@ -102,12 +104,12 @@ class PrinterWorker(QObject):
             self.log.emit("error", f"{job.label} 실패 — {exc.message}")
             for hint in exc.hints:
                 self.log.emit("warn", f"  · {hint}")
-            outcome = JobOutcome(job.key, job.label, False, exc.message, list(exc.hints))
+            outcome = JobOutcome(job.key, job.label, False, False, exc.message, list(exc.hints))
         except Exception as exc:  # 예상 못 한 예외도 삼키지 않고 사용자에게 보여준다.
             detail = f"예상치 못한 오류: {exc}"
             self.log.emit("error", f"{job.label} 실패 — {detail}")
             self.log.emit("info", traceback.format_exc().strip())
-            outcome = JobOutcome(job.key, job.label, False, detail)
+            outcome = JobOutcome(job.key, job.label, False, False, detail)
 
         self.job_done.emit(job.key, outcome)
         with self._pending_lock:
@@ -189,18 +191,27 @@ def _to_outcome(job: Job, result: Any) -> JobOutcome:
     if isinstance(result, JobOutcome):
         return result
     if isinstance(result, StepResult):
-        return JobOutcome(job.key, result.title, result.ok, result.detail, result.hints, result)
+        return JobOutcome(
+            job.key, result.title, result.ok, result.warning, result.detail, result.hints, result
+        )
     if isinstance(result, list) and result and isinstance(result[0], StepResult):
         ok = all(step.ok for step in result)
+        warning = any(step.warning for step in result)
         failed = [step.title for step in result if not step.ok]
-        detail = "모든 단계 정상" if ok else "실패: " + ", ".join(failed)
-        return JobOutcome(job.key, job.label, ok, detail, payload=result)
+        warned = [step.title for step in result if step.warning]
+        if not ok:
+            detail = "실패: " + ", ".join(failed)
+        elif warning:
+            detail = "확인 필요: " + ", ".join(warned)
+        else:
+            detail = "모든 단계 정상"
+        return JobOutcome(job.key, job.label, ok, warning, detail, payload=result)
     if isinstance(result, BaudScanResult):
         detail = (
             f"{result.baudrate} bps 에서 응답" if result.found else "응답하는 속도를 찾지 못했습니다"
         )
-        return JobOutcome(job.key, job.label, result.found, detail, payload=result)
-    return JobOutcome(job.key, job.label, True, str(result or ""), payload=result)
+        return JobOutcome(job.key, job.label, result.found, False, detail, payload=result)
+    return JobOutcome(job.key, job.label, True, False, str(result or ""), payload=result)
 
 
 class WorkerThread:

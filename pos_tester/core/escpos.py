@@ -205,15 +205,30 @@ def _bit(value: int, mask: int) -> bool:
     return bool(value & mask)
 
 
+#: DLE EOT 1 응답에서 금전함 커넥터 3번 핀 레벨을 나타내는 비트.
+DRAWER_PIN3_BIT: Final = 0x04
+
+
+def drawer_pin3_high(status_byte: int) -> bool:
+    """DLE EOT 1 응답에서 금전함 커넥터 3번 핀이 HIGH 인지 돌려준다.
+
+    주의: 어느 레벨이 '열림' 인지는 ESC/POS 규격이 정하지 않는다.
+    금전함 스위치가 NO 냐 NC 냐에 따라 반대가 되므로, 열림 판정은
+    이 값 하나로 하지 말고 킥 전후 변화로 해야 한다. (tester.drawer_test 참고)
+    """
+    return _bit(status_byte, DRAWER_PIN3_BIT)
+
+
 def _decode_printer(v: int) -> list[StatusFlag]:
     """DLE EOT 1 - 프린터 상태."""
     drawer_closed = _bit(v, 0x04)
     return [
         StatusFlag(
             "금전함",
-            # bit2 는 금전함 커넥터 3번 핀 레벨이다.
-            # 0(LOW) = 열림, 1(HIGH) = 닫힘 또는 미연결.
-            "닫힘 또는 미연결" if drawer_closed else "열림",
+            # bit2 는 금전함 커넥터 3번 핀(열림 감지 스위치) 레벨이다.
+            # 열림 감지 스위치가 없는 금전함도 많아서 HIGH 를 '닫힘' 으로
+            # 단정할 수 없다. 실제 열림 여부는 킥 전후 변화로 판단한다.
+            "닫힘 (또는 센서 없음)" if drawer_closed else "열림",
             ok=True,  # 열림/닫힘 자체는 오류가 아니다.
         ),
         StatusFlag("프린터", "오프라인" if _bit(v, 0x08) else "온라인", ok=not _bit(v, 0x08)),

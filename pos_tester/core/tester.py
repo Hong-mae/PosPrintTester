@@ -29,6 +29,19 @@ DRAWER_CHECKLIST: Final[tuple[str, ...]] = (
     "금전함 측면의 수동 키가 잠금(LOCK) 위치인지 확인하세요. 잠겨 있으면 신호가 가도 열리지 않습니다.",
 )
 
+#: 킥은 나갔는데 핀3 레벨이 안 변할 때 보여 줄 안내.
+#: 핀3 만으로는 '센서가 없다' 와 '서랍이 안 열렸다' 를 구분할 수 없다.
+#: 그래서 기사에게 먼저 눈으로 보게 하고 안내를 둘로 갈라 준다.
+DRAWER_SENSOR_NOTES: Final[tuple[str, ...]] = (
+    "먼저 서랍이 실제로 열렸는지 눈으로 확인하세요. 여기서 안내가 갈립니다.",
+    "열렸다면 — 정상입니다. 여는 회선(2·5번 핀)은 잘 동작했고 '열림 감지'만 안 되는 상태입니다. "
+    "3번 핀은 금전함 안의 감지 스위치를 읽는 별도의 선인데, 스위치가 아예 없는 금전함도 많고 "
+    "있더라도 6가닥(RJ-12) 케이블이 아니면 신호 GND 가 빠져 감지되지 않습니다. "
+    "여닫는 데는 지장이 없으니 감지 기능이 필요 없다면 이 경고는 무시하세요.",
+    "안 열렸다면 — 화면의 '안 열려요?' 를 눌러 점검 순서를 확인하세요. "
+    "반대쪽 핀, 솔레노이드 전압(12V/24V), 케이블 체결, 수동 키 잠금 순으로 봅니다.",
+)
+
 #: RAW 전송 패널에 노출할 프리셋.
 COMMAND_PRESETS: Final[tuple[tuple[str, str], ...]] = (
     ("초기화 (ESC @)", "1B 40"),
@@ -50,10 +63,17 @@ _WIDTH: Final = 42  # 80mm 용지 기본 폭(글자 수)
 
 @dataclass
 class StepResult:
-    """테스트 한 단계의 결과."""
+    """테스트 한 단계의 결과.
+
+    ok 와 warning 은 배타적이지 않다. '명령은 잘 나갔지만 결과를 확인할 수 없다'
+    같은 경우는 ok=True, warning=True 로 두어 실패로 몰지 않으면서도
+    사용자가 눈으로 확인해야 한다는 것을 알린다.
+    """
 
     title: str
     ok: bool
+    #: True 면 UI 가 노란색으로 표시한다. 실패는 아니지만 확인이 필요한 상태.
+    warning: bool = False
     detail: str = ""
     hints: list[str] = field(default_factory=list)
     #: 상태 조회 단계라면 해석된 상태들.
@@ -66,6 +86,9 @@ class PrinterTester:
     def __init__(self, transport: Transport, log: LogFn | None = None) -> None:
         self.transport = transport
         self._log: LogFn = log or (lambda level, message: None)
+        #: 킥으로 변화를 한 번 관찰하면 '열림' 에 해당하는 핀3 레벨을 알게 된다.
+        #: 그 뒤로는 '이미 열려 있어 변화가 없는 것' 과 '센서가 없는 것' 을 구분할 수 있다.
+        self._pin3_open_level: bool | None = None
 
     # -- 내부 헬퍼 -------------------------------------------------------
     def _send(self, data: bytes, what: str) -> None:
@@ -287,11 +310,34 @@ class PrinterTester:
         self,
         pin: escpos.DrawerPin,
         realtime: bool = False,
-        verify_delay: float = 0.35,
+        verify_timeout: float = 1.5,
+        poll_interval: float = 0.1,
     ) -> StepResult:
-        """금전함을 킥하고, 가능하면 핀3 상태로 실제로 열렸는지 확인한다."""
+        """금전함을 킥하고 핀3 센서로 실제로 열렸는지 확인한다.
+
+        핀3 는 킥 회선(2·5번 핀)과 별개인 '서랍 열림 감지' 입력이다.
+        ESC/POS 규격은 핀3 의 전압 레벨만 정의하고 어느 쪽이 열림인지는 정하지
+        않는다 - 금전함 스위치가 NO 냐 NC 냐에 따라 반대가 된다.
+        그래서 레벨 하나만 보지 않고 **킥 전후 변화**로 판단한다.
+
+        * 레벨이 바뀌었다 → 열린 것으로 본다. (어느 방향이든 스위치가 동작했다는 뜻)
+        * 바뀌지 않았다   → 감지 스위치가 없거나 센서선이 안 물린 것이다.
+                            서랍은 잘 열릴 수 있으므로 실패가 아니라 경고로 둔다.
+        """
         pin_label = "2번 핀" if pin is escpos.DrawerPin.PIN_2 else "5번 핀"
         title = f"금전함 {pin_label}" + (" (리얼타임)" if realtime else "")
+
+        # 킥하기 전 핀3 레벨을 먼저 잡아 둔다. 이게 비교 기준이 된다.
+        before: bool | None = None
+        if self.transport.supports_read:
+            try:
+                before = escpos.drawer_pin3_high(
+                    self.transport.query(escpos.status_query(escpos.StatusKind.PRINTER))[0]
+                )
+                self._log("info", f"킥 전 핀3 = {'HIGH' if before else 'LOW'}")
+            except Exception:
+                # 기준을 못 잡아도 킥 자체는 해 본다. 판정만 '확인 불가' 가 된다.
+                self._log("warn", "킥 전 상태를 읽지 못했습니다. 열림 여부는 눈으로 확인하세요.")
 
         try:
             data = (
@@ -306,32 +352,100 @@ class PrinterTester:
             return StepResult(
                 title=title,
                 ok=True,
-                detail="킥 명령 전송 완료 (열림 여부 확인 불가)",
+                warning=True,
+                detail="킥 명령 전송 완료 (단방향이라 열림 확인 불가)",
                 hints=list(DRAWER_CHECKLIST),
             )
 
-        # 솔레노이드가 움직이고 핀3 레벨이 바뀔 시간을 준다.
-        time.sleep(verify_delay)
-        try:
-            report = self.transport.query_status(escpos.StatusKind.PRINTER)
-        except Exception as exc:
-            return self._failure(f"{title} 상태 확인", exc)
+        report, after = self._poll_pin3(before, verify_timeout, poll_interval)
+        if report is None:
+            return StepResult(
+                title=title,
+                ok=True,
+                warning=True,
+                detail="킥 명령은 보냈지만 상태를 읽지 못했습니다",
+                hints=list(DRAWER_CHECKLIST),
+            )
 
-        opened = not bool(report.raw & 0x04)  # bit2 == 0 이면 핀3 LOW = 열림
-        if opened:
-            self._log("ok", f"{title}: 금전함이 열렸습니다. (핀3 LOW, {report.raw_hex})")
-            return StepResult(title=title, ok=True, detail="금전함 열림 확인", reports=[report])
+        if before is None:
+            self._log("warn", f"{title}: 킥 전 기준값이 없어 열림 여부를 판정할 수 없습니다.")
+            return StepResult(
+                title=title,
+                ok=True,
+                warning=True,
+                detail="킥 명령 전송 완료 (열림 확인 불가)",
+                hints=list(DRAWER_SENSOR_NOTES),
+                reports=[report],
+            )
 
-        self._log("warn", f"{title}: 열림 신호가 확인되지 않습니다. (핀3 HIGH, {report.raw_hex})")
-        for item in DRAWER_CHECKLIST:
-            self._log("info", f"  · {item}")
+        if after != before:
+            # 레벨이 바뀌었다 = 감지 스위치가 동작했다 = 서랍이 열렸다.
+            self._pin3_open_level = after
+            polarity = "" if before else " (센서 극성이 일반과 반대입니다)"
+            self._log("ok", f"{title}: 금전함이 열렸습니다.{polarity} ({report.raw_hex})")
+            return StepResult(
+                title=title,
+                ok=True,
+                detail=f"금전함 열림 확인{polarity}",
+                reports=[report],
+            )
+
+        if self._pin3_open_level is not None and after == self._pin3_open_level:
+            # 앞선 킥에서 센서가 동작하는 걸 이미 봤다. 지금은 그냥 열려 있는 상태다.
+            self._log(
+                "warn",
+                f"{title}: 금전함이 이미 열려 있어 변화를 확인할 수 없습니다. "
+                "서랍을 닫고 다시 눌러 주세요.",
+            )
+            return StepResult(
+                title=title,
+                ok=True,
+                warning=True,
+                detail="이미 열려 있어 확인 불가 (서랍을 닫고 다시 시도하세요)",
+                reports=[report],
+            )
+
+        # 레벨이 그대로 = 감지 스위치가 없거나 센서선이 안 물렸다.
+        # 서랍은 잘 열렸을 수 있으므로 실패로 몰지 않는다.
+        self._log(
+            "warn",
+            f"{title}: 킥은 나갔지만 핀3 레벨이 변하지 않았습니다 "
+            f"({'HIGH' if after else 'LOW'} 유지, {report.raw_hex}). 서랍이 열렸는지 눈으로 확인하세요.",
+        )
+        for note in DRAWER_SENSOR_NOTES:
+            self._log("info", f"  · {note}")
         return StepResult(
             title=title,
-            ok=False,
-            detail="핀3가 LOW 로 떨어지지 않았습니다 (닫힘 또는 미연결)",
-            hints=list(DRAWER_CHECKLIST),
+            ok=True,
+            warning=True,
+            detail="킥 명령 전송 완료 · 열림 감지 안 됨 (서랍이 열렸는지 눈으로 확인하세요)",
+            hints=list(DRAWER_SENSOR_NOTES) + list(DRAWER_CHECKLIST),
             reports=[report],
         )
+
+    def _poll_pin3(
+        self, before: bool | None, timeout: float, interval: float
+    ) -> tuple[escpos.StatusReport | None, bool | None]:
+        """핀3 레벨이 바뀔 때까지 잠깐 기다린다.
+
+        솔레노이드가 튀고 서랍이 실제로 밀려 나와 스위치를 건드리기까지
+        시간이 걸리므로 한 번만 읽으면 놓친다.
+        """
+        deadline = time.monotonic() + timeout
+        report: escpos.StatusReport | None = None
+        level: bool | None = None
+        while True:
+            time.sleep(interval)
+            try:
+                report = self.transport.query_status(escpos.StatusKind.PRINTER)
+            except Exception as exc:
+                self._log("warn", f"킥 후 상태를 읽지 못했습니다. ({exc})")
+                return report, level
+            level = escpos.drawer_pin3_high(report.raw)
+            if before is not None and level != before:
+                return report, level
+            if time.monotonic() >= deadline:
+                return report, level
 
     # -- RAW -------------------------------------------------------------
     def send_raw(self, data: bytes, read_reply: bool = True) -> StepResult:
