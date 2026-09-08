@@ -13,6 +13,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QWidget
 
 from ...config import AppConfig
 from ...core.discovery import list_printers, list_serial_ports
+from ...core.errors import PosTesterError
 from ...core.transport import (
     BAUD_RATES,
     FlowControl,
@@ -40,6 +41,18 @@ _SPOOLER_NOTE = (
 _MOCK_NOTE = "실제 장비 없이 화면과 순서를 익힐 수 있는 연습 모드입니다."
 _SERIAL_NOTE = "속도를 모르면 '통신 속도 자동 찾기'를 누르세요."
 
+#: COM 포트가 하나도 없을 때. USB 로 물린 POS 프린터는 제조사 VirtualCOM 드라이버를
+#: 설치해야 COM 포트로 잡힌다(세우테크 SLK-TS100 등). 이걸 모르면 한참 헤맨다.
+_NO_PORT_NOTE = (
+    "COM 포트가 하나도 없습니다. USB 케이블로 연결했다면 제조사의 "
+    "VirtualCOM 드라이버를 설치해야 COM 으로 잡힙니다. 드라이버 없이 쓰려면 "
+    "방식을 'USB (윈도우 프린터)' 로 바꾸세요."
+)
+_NO_PRINTER_NOTE = (
+    "설치된 프린터가 없습니다. 제어판 > 장치 및 프린터에서 프린터가 보이는지 "
+    "먼저 확인하세요. LAN 으로 연결된 프린터는 이 프로그램이 지원하지 않습니다."
+)
+
 
 class ConnectionPanel(Card):
     """연결 설정 카드."""
@@ -56,6 +69,10 @@ class ConnectionPanel(Card):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("연결", parent)
         self._connected = False
+        #: 목록 조회가 실패했을 때의 이유. 비어 있으면 성공.
+        self._list_error = ""
+        #: 조회는 됐는데 결과가 하나도 없는 상태.
+        self._list_empty = False
         layout = self.body()
         layout.setContentsMargins(SPACE["lg"], SPACE["sm"], SPACE["lg"], SPACE["md"])
         layout.setSpacing(SPACE["xs"])
@@ -148,32 +165,49 @@ class ConnectionPanel(Card):
 
     # -- 목록 갱신 ---------------------------------------------------------
     def refresh_targets(self) -> None:
-        """모드에 맞춰 포트 또는 프린터 목록을 다시 읽는다."""
+        """모드에 맞춰 포트 또는 프린터 목록을 다시 읽는다.
+
+        조회에 실패하면 그 이유를 화면에 남긴다. 목록이 비어 있을 때
+        '장비가 없는 것' 인지 '조회를 못 한 것' 인지 구분되어야 한다.
+        """
         previous = self.target
         self.target_combo.clear()
+        self._list_error = ""
+        self._list_empty = False
 
         if self.mode == "mock":
             self.target_combo.addItem("가상 프린터", "mock")
         elif self.mode == "spooler":
-            printers = list_printers()
+            try:
+                printers = list_printers()
+            except PosTesterError as exc:
+                printers = []
+                self._list_error = exc.message
             for printer in printers:
                 self.target_combo.addItem(printer.label, printer.name)
             if not printers:
+                self._list_empty = True
                 self.target_combo.addItem("설치된 프린터 없음", "")
         else:
-            ports = list_serial_ports()
+            try:
+                ports = list_serial_ports()
+            except PosTesterError as exc:
+                ports = []
+                self._list_error = exc.message
             for port in ports:
                 self.target_combo.addItem(port.label, port.device)
                 self.target_combo.setItemData(
                     self.target_combo.count() - 1, port.label, Qt.ItemDataRole.ToolTipRole
                 )
             if not ports:
+                self._list_empty = True
                 self.target_combo.addItem("COM 포트 없음", "")
 
         if previous:
             index = self.target_combo.findData(previous)
             if index >= 0:
                 self.target_combo.setCurrentIndex(index)
+        self._update_note()
 
     # -- 이벤트 -----------------------------------------------------------
     def _on_mode_changed(self) -> None:
@@ -188,8 +222,22 @@ class ConnectionPanel(Card):
         self.flow_combo.setEnabled(serial)
         self.scan_button.setEnabled(serial)
         self.target_label.setText("포트" if serial else "프린터" if mode == "spooler" else "대상")
+        self._update_note()
+
+    def _update_note(self) -> None:
+        """방식과 목록 상태에 맞는 안내문을 고른다.
+
+        조회 실패 > 목록 비어 있음 > 방식별 기본 안내 순으로 우선한다.
+        """
+        if self._list_error:
+            self.note.setText(self._list_error)
+            return
+        mode = self.mode
+        if self._list_empty:
+            self.note.setText(_NO_PORT_NOTE if mode == "serial" else _NO_PRINTER_NOTE)
+            return
         self.note.setText(
-            _SERIAL_NOTE if serial else _SPOOLER_NOTE if mode == "spooler" else _MOCK_NOTE
+            _SERIAL_NOTE if mode == "serial" else _SPOOLER_NOTE if mode == "spooler" else _MOCK_NOTE
         )
 
     def _on_scan_clicked(self) -> None:

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Callable, Iterable, Sequence
 
 from . import escpos
-from .errors import ConnectionFailed
+from .errors import ConnectionFailed, TransportError
 from .transport import BAUD_RATES, FlowControl, SerialSettings, SerialTransport
 
 
@@ -63,11 +63,18 @@ class BaudScanResult:
 
 
 def list_serial_ports() -> list[PortInfo]:
-    """연결된 COM 포트를 설명 문자열과 함께 돌려준다."""
+    """연결된 COM 포트를 설명 문자열과 함께 돌려준다.
+
+    조회 자체가 실패하면 빈 목록 대신 예외를 던진다. 빈 목록으로 뭉개면
+    '포트가 없다' 와 '조회를 못 했다' 를 구분할 수 없어 현장에서 원인을 못 찾는다.
+    """
     try:
         from serial.tools import list_ports
-    except ImportError:
-        return []
+    except ImportError as exc:  # pragma: no cover - 배포본에는 항상 포함된다.
+        raise TransportError(
+            "시리얼 통신 모듈(pyserial)을 불러오지 못해 포트를 조회할 수 없습니다.",
+            ["프로그램을 다시 설치하거나 다시 빌드해 주세요."],
+        ) from exc
     return [
         PortInfo(device=p.device, description=(p.description or "").strip())
         for p in sorted(list_ports.comports(), key=_port_sort_key)
@@ -82,11 +89,18 @@ def _port_sort_key(port: object) -> tuple[int, str]:
 
 
 def list_printers() -> list[PrinterInfo]:
-    """설치된 프린터 목록. 윈도우가 아니면 빈 목록."""
+    """설치된 프린터 목록.
+
+    조회 자체가 실패하면 빈 목록 대신 예외를 던진다. 이유를 화면에 적어야
+    기사가 '프린터가 없다' 와 '프로그램이 조회를 못 했다' 를 구분할 수 있다.
+    """
     try:
         import win32print
-    except ImportError:
-        return []
+    except ImportError as exc:
+        raise TransportError(
+            "USB(윈도우 프린터) 목록은 Windows 에서만 조회할 수 있습니다.",
+            ["시리얼(COM) 또는 가상 프린터 연결을 사용하세요."],
+        ) from exc
 
     try:
         default = win32print.GetDefaultPrinter()
@@ -96,8 +110,11 @@ def list_printers() -> list[PrinterInfo]:
     flags = win32print.PRINTER_ENUM_LOCAL | win32print.PRINTER_ENUM_CONNECTIONS
     try:
         entries = win32print.EnumPrinters(flags, None, 2)
-    except Exception:
-        return []
+    except Exception as exc:
+        raise TransportError(
+            f"프린터 목록을 읽지 못했습니다. ({exc})",
+            ["제어판 > 장치 및 프린터에서 프린터가 보이는지 확인하세요."],
+        ) from exc
 
     printers = [PrinterInfo(name=e["pPrinterName"], is_default=e["pPrinterName"] == default) for e in entries]
     # 기본 프린터를 맨 위로 올린다.
