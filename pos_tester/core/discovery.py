@@ -65,6 +65,16 @@ class BaudScanResult:
 def list_serial_ports() -> list[PortInfo]:
     """연결된 COM 포트를 설명 문자열과 함께 돌려준다.
 
+    두 곳을 합쳐서 본다.
+
+    1. pyserial 의 comports() — SetupAPI 의 '포트(COM & LPT)' 장치 클래스
+    2. 레지스트리 HKLM\\HARDWARE\\DEVICEMAP\\SERIALCOMM
+
+    1번만 보면 POS 메인보드 내장 시리얼처럼 '포트' 장치 클래스로 등록되지 않은
+    COM 포트가 통째로 빠진다. 장치 관리자에는 안 보여도 실제로는 열리는 포트가
+    있고, SERIALCOMM 은 그런 포트까지 담고 있는 실제 존재 목록이다.
+    (윈도우의 mode 명령이나 SerialPort.GetPortNames() 가 보는 곳이 여기다.)
+
     조회 자체가 실패하면 빈 목록 대신 예외를 던진다. 빈 목록으로 뭉개면
     '포트가 없다' 와 '조회를 못 했다' 를 구분할 수 없어 현장에서 원인을 못 찾는다.
     """
@@ -75,10 +85,47 @@ def list_serial_ports() -> list[PortInfo]:
             "시리얼 통신 모듈(pyserial)을 불러오지 못해 포트를 조회할 수 없습니다.",
             ["프로그램을 다시 설치하거나 다시 빌드해 주세요."],
         ) from exc
-    return [
-        PortInfo(device=p.device, description=(p.description or "").strip())
-        for p in sorted(list_ports.comports(), key=_port_sort_key)
-    ]
+
+    found: dict[str, PortInfo] = {}
+    for port in list_ports.comports():
+        info = PortInfo(device=port.device, description=(port.description or "").strip())
+        found[info.device.upper()] = info
+
+    # SetupAPI 가 놓친 포트를 레지스트리로 보완한다. 이미 찾은 포트는 덮어쓰지 않는다.
+    for info in registry_serial_ports():
+        found.setdefault(info.device.upper(), info)
+
+    return sorted(found.values(), key=_port_sort_key)
+
+
+def registry_serial_ports() -> list[PortInfo]:
+    """레지스트리 SERIALCOMM 에 등록된 COM 포트.
+
+    윈도우가 아니거나 키가 없으면 빈 목록을 돌려준다.
+    이건 보조 수단이라 실패해도 예외를 던지지 않는다 - 주 경로인 comports() 가
+    이미 동작했다면 여기서 막힐 이유가 없다.
+    """
+    try:
+        import winreg
+    except ImportError:
+        return []
+
+    ports: list[PortInfo] = []
+    try:
+        with winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DEVICEMAP\SERIALCOMM"
+        ) as key:
+            _, value_count, _ = winreg.QueryInfoKey(key)
+            for index in range(value_count):
+                source, device, _ = winreg.EnumValue(key, index)
+                device = str(device).strip()
+                if device:
+                    # source 는 \Device\Serial0 같은 드라이버 이름이다.
+                    driver = str(source).rsplit("\\", 1)[-1]
+                    ports.append(PortInfo(device=device, description=f"{driver} (레지스트리)"))
+    except OSError:
+        return []
+    return ports
 
 
 def _port_sort_key(port: object) -> tuple[int, str]:
